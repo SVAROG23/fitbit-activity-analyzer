@@ -1,23 +1,6 @@
 """
-Модуль загрузки и предобработки данных FitBit Fitness Tracker Data.
-
-Назначение:
-    Превратить «сырые» CSV из датасета mturkfitbit_export_3.12.16-4.11.16
-    в согласованные pandas.DataFrame с корректными типами, единым форматом
-    дат и без явных аномалий.
-
-Ключевые решения:
-    * Все даты приводим к datetime через pd.to_datetime(..., format="mixed"),
-      чтобы корректно обрабатывать два встречающихся формата
-      (например, "4/12/2016 12:00:00 AM" и "2016-04-12 00:00:00")
-      и не получать UserWarning в pandas 2.x/3.x.
-    * Числовые колонки приводим к numeric и заполняем 0 там, где пропуск
-      означает «активности не было» (шаги, минуты, калории).
-    * Удаляем дубликаты по (Id, ActivityDate) — в датасете встречаются повторы.
-    * Отсекаем физиологически невозможные значения (шаги > 60 000,
-      сон > 16 ч) — это ошибки трекера, они искажают статистику.
-    * Сон и вес — опциональные источники: при отсутствии файла/колонки
-      возвращаем пустой DataFrame с нужными колонками, а не падаем.
+Модуль загрузки и предобработки данных FitBit.
+Читает 5 CSV, чистит, приводит типы и объединяет таблицы.
 """
 import os
 import warnings
@@ -35,14 +18,7 @@ warnings.filterwarnings(
 
 def load_csv(data_dir: str, filename: str) -> pd.DataFrame:
     """
-    Читает CSV из каталога data_dir с понятной ошибкой, если файла нет.
-
-    Параметры:
-        data_dir : str — каталог с CSV-файлами датасета.
-        filename : str — имя файла (например, "dailyActivity_merged.csv").
-
-    Возвращает:
-        pd.DataFrame — прочитанная таблица «как есть», без преобразований.
+    Читает CSV; если файла нет — понятная ошибка с подсказкой.
     """
     path = os.path.join(data_dir, filename)
     if not os.path.exists(path):
@@ -59,20 +35,7 @@ def load_csv(data_dir: str, filename: str) -> pd.DataFrame:
 
 def preprocess_daily_activity(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Очистка основной таблицы дневной активности.
-
-    Шаги:
-        1) ActivityDate -> datetime (NaT отбрасываем).
-        2) Числовые колонки -> numeric, пропуски -> 0.
-        3) Фильтр выбросов по шагам: [0; 60 000].
-        4) Удаление дубликатов по (Id, ActivityDate).
-        5) Сортировка по (Id, ActivityDate) — нужна для rolling/shift.
-
-    Параметры:
-        df : pd.DataFrame — сырая dailyActivity_merged.csv.
-
-    Возвращает:
-        pd.DataFrame — очищенная дневная активность.
+    Очищает дневную активность: даты, пропуски, выбросы, дубли.
     """
     df = df.copy()
 
@@ -103,16 +66,7 @@ def preprocess_daily_activity(df: pd.DataFrame) -> pd.DataFrame:
 
 def preprocess_hourly(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
     """
-    Очистка почасовых таблиц (hourlySteps / hourlyIntensities).
-
-    Добавляет две производные колонки:
-        Hour    — час суток (0–23), нужен для pivot/heatmap.
-        Weekday — название дня недели, удобно для подписей графиков.
-
-    Параметры:
-        df       : pd.DataFrame — сырая почасовая таблица.
-        time_col : str          — имя колонки со временем (ActivityHour).
-
+    Чистит почасовые данные, добавляет часы и день недели.
     Возвращает:
         pd.DataFrame — таблица с корректным временем и производными полями.
     """
@@ -130,20 +84,6 @@ def preprocess_hourly(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
 def preprocess_sleep(df: pd.DataFrame) -> pd.DataFrame:
     """
     Очистка данных о сне и агрегация до дневного уровня.
-
-    Особенность датасета:
-        minuteSleep_merged.csv в разных выгрузках содержит либо колонку
-        'value' (код/минуты сна), либо 'TotalMinutesAsleep'. Здесь
-        мы аккуратно выбираем источник по факту наличия колонки,
-        не используя df.get(...) с fallback-скаляром, чтобы избежать
-        несовместимости с pandas 3.x.
-
-    Логика:
-        * date -> datetime.
-        * Суммируем минуты сна по (Id, date) — получаем дневной итог.
-        * Переводим минуты в часы (SleepHours).
-        * Отсекаем невозможные значения: сон ∈ [0; 16] ч.
-
     Возвращает:
         pd.DataFrame с колонками [Id, ActivityDate, TotalMinutesAsleep, SleepHours].
         Имя ActivityDate выбрано специально, чтобы потом мержить с daily.
@@ -188,17 +128,9 @@ def preprocess_sleep(df: pd.DataFrame) -> pd.DataFrame:
 
 def preprocess_weight(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Очистка данных веса и ИМТ.
-
-    Особенность:
-        Дата в weightLogInfo_merged.csv приходит с таймзоной (UTC).
-        Для мёржа с dailyActivity нужна «наивная» дата без времени,
-        поэтому:
-            * tz_localize(None) — убираем таймзону,
-            * normalize() — оставляем только дату (00:00:00).
-
+    Чистит данные веса и ИМТ, убирает таймзону.
     Возвращает:
-        pd.DataFrame с колонками [Id, ActivityDate, WeightKg, BMI, ...].
+        pd.DataFrame с колонками [Id, ActivityDate, WeightKg, BMI].
         При отсутствии колонки Date — пустой каркас.
     """
     df = df.copy()
@@ -220,18 +152,10 @@ def preprocess_weight(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_dataset(data_dir: str) -> dict:
     """
-    Точка входа модуля: собирает все нужные таблицы и обогащает daily.
-
-    Порядок:
-        1) daily      — основная таблица.
-        2) hourly_*   — почасовые шаги/интенсивности (для паттернов).
-        3) sleep      — дневной сон (может отсутствовать — graceful).
-        4) weight     — вес/ИМТ (может отсутствовать — graceful).
-        5) merge daily + sleep + weight по (Id, ActivityDate).
-
+    Собирает все данные в единый словарь, объединяя таблицы.
     Возвращает:
         dict с ключами:
-            "daily"              — обогащённая дневная активность,
+            "daily"              — дневная активность,
             "hourly_steps"       — почасовые шаги,
             "hourly_intensities" — почасовые интенсивности,
             "sleep"              — дневной сон.
