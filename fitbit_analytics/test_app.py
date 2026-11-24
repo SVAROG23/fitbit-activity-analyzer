@@ -1,3 +1,6 @@
+"""
+Модуль тестирования.
+"""
 import os
 
 import numpy as np
@@ -6,6 +9,10 @@ import pandas as pd
 from data_loader import build_dataset
 from metrics import personal_goal, regularity_index
 from patterns import detect_anomalous_days, sleep_activity_correlation
+
+# Вычисляем абсолютный путь к папке data (независимо от того, откуда запущен скрипт)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 
 def test_regularity_index():
@@ -88,13 +95,13 @@ def test_data_loading():
     """
     Тест 5 (Интеграционный): Проверка загрузки реальных CSV-файлов.
     """
-    # Если папки с данными нет — пропускаем (не падаем с ошибкой)
-    if not os.path.exists("./data"):
-        print("[SKIP] Интеграционный тест: папка data не найдена.")
+    # Проверяем наличие папки по абсолютному пути
+    if not os.path.exists(DATA_DIR):
+        print("[INFO] Интеграционный тест: папка data не найдена. Пропускаем.")
         return
 
     # Проверяем, что пайплайн загрузки отрабатывает без исключений
-    data = build_dataset("./data")
+    data = build_dataset(DATA_DIR)
     assert "daily" in data, "Словарь должен содержать ключ 'daily'"
     assert len(data["daily"]) > 0, "Данные не должны быть пустыми"
     assert "SleepHours" in data["daily"].columns, "Должна быть колонка сна"
