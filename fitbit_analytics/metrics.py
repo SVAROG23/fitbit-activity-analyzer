@@ -8,8 +8,6 @@ import pandas as pd
 def daily_summary(df_user: pd.DataFrame) -> pd.DataFrame:
     """
     Добавляет 7-дневное скользящее среднее (MA7) для шагов и калорий.
-    Возвращает:
-        pd.DataFrame — копию с колонками Steps_MA7 и Calories_MA7.
     """
     df = df_user.sort_values("ActivityDate").copy()
     # min_periods=1 — считаем среднее даже в первые дни,
